@@ -95,6 +95,6 @@ btn_back = tk.Button(page6, text="돌아가기",font=("한컴 윤고딕 240", 10
 btn_back.place(x=570, y=650)
 
 # 처음 시작할 화면 설정
-show_frame(page4)
+show_frame(page1)
 
 root.mainloop()
