@@ -1,0 +1,208 @@
+import tkinter as tk
+import random
+
+# --- [스네이크 게임 설정 및 변수] ---
+WIDTH = 400
+HEIGHT = 400
+CELL_SIZE = 20
+SPEED = 100
+
+snake = []
+direction = "Right"
+food = None
+game_running = False  # 게임 진행 상황 확인용
+snake_timer_id = None
+
+def show_frame(frame):
+    frame.tkraise()
+
+# 화면 전환과 동시에 이름을 업데이트하는 함수
+def start_game():
+    user_name = name_entry.get() # 2번 화면 입력창에서 이름 가져오기
+    if not user_name.strip():    # 이름을 입력 안 했을 경우 대비
+        user_name = "고양이"
+# 3번 화면의 이름 라벨 업데이트
+    char_name_label.config(text=user_name)
+    # 3번 화면으로 전환
+    show_frame(page3)
+
+    welcome_label.pack(pady=30)
+    welcome_label.config(text="집사가 된 걸 축하합니다!")
+    root.after(3000, welcome_label.pack_forget)
+
+root = tk.Tk()
+root.title("키우기 게임")
+root.geometry("700x700")
+
+container = tk.Frame(root)
+container.pack(fill="both", expand=True)
+
+#화면 생성
+page1 = tk.Frame(container, bg="lightyellow")
+page2 = tk.Frame(container, bg="lightgrey")
+page3= tk.Frame(container, bg="lightgrey")
+page4= tk.Frame(container, bg="lightgrey")
+page5= tk.Frame(container, bg="skyblue")
+page6= tk.Frame(container, bg="skyblue")
+
+# 화면들을 같은 자리에 겹쳐서 배치
+for frame in (page1, page2,page3, page4, page5, page6):
+    frame.place(x=0, y=0, relwidth=1, relheight=1)
+
+# --- 1번 화면 구성 ---
+label1 = tk.Label(page1, text=" 고양이 키우기 ", font=("한컴 윤고딕 240", 20), bg="skyblue")
+label1.pack(pady=50)
+
+btn1 = tk.Button(page1, text="시작하기",width=20,height=2, font=("한컴 윤고딕 240",18),command=lambda: show_frame(page2))
+btn1.pack()
+
+# --- 2번 화면 구성 ---
+label2 = tk.Label(page2, text="고양이 이름을 정해봐요!", font=("한컴 윤고딕 240", 20), bg="white")
+label2.pack(pady=50)
+
+name_entry = tk.Entry(page2, font=("한컴 윤고딕 240", 18), justify='center')
+name_entry.pack(pady=20)
+
+# --- 결정 버튼 ---
+btn2 = tk.Button(page2, text="결정", width=15, font=("한컴 윤고딕 240", 15),command=start_game)
+btn2.pack(pady=20)
+
+# --- 3번 화면 구성 ---
+# 캐릭터 이름
+char_name_label = tk.Label(page3, text="", font=("한컴 윤고딕 240", 15, "bold"), bg="yellow")
+char_name_label.pack(pady=(150, 0))
+
+# 고양이 캐릭터
+cat_char = tk.Label(page3, text="∧,,,∧ \n (  ̳• · • ̳) \n /    づ♡", font=("Arial", 40), bg="white")
+cat_char.pack(pady=10)
+
+welcome_label = tk.Label(page3, text="", font=("한컴 윤고딕 240", 15), bg="white")
+welcome_label.pack(pady=30)
+
+btn_shop = tk.Button(page3, text="게임", font=("한컴 윤고딕 240", 15), command=lambda: show_frame(page4))
+btn_shop.place(x=600, y=600, width=80, height=40)
+
+# ---4번 화면 구성 ---
+label3 = tk.Label(page4, text="게임", font=("한컴 윤고딕 240", 40), bg="white")
+label3.pack(pady=50)
+
+btn_back = tk.Button(page4, text="돌아가기",font=("한컴 윤고딕 240", 20), command=lambda: show_frame(page3))
+btn_back.place(x=500, y=600)
+
+btn_snake = tk.Button(page4, text="스네이크 게임",font=("한컴 윤고딕 240", 15), command=lambda: show_frame(page5))
+btn_snake.place(x=100, y=200)
+
+btn_touch = tk.Button(page4, text="반응속도 게임",font=("한컴 윤고딕 240", 15), command=lambda: show_frame(page6))
+btn_touch.place(x=250, y=200)
+
+label4 = tk.Label(page5, text="<스네이크 게임>", font=("한컴 윤고딕 240", 25), bg="white")
+label4.pack(pady=10)
+
+canvas = tk.Canvas(page5, width=WIDTH, height=HEIGHT, bg="black")
+canvas.pack(pady=10)
+
+btn_back5 = tk.Button(page5, text="돌아가기", font=("한컴 윤고딕 240", 10), command=lambda: show_frame(page4))
+btn_back5.place(x=570, y=650)
+
+# 재시작 버튼 추가
+btn_restart = tk.Button(page5, text="다시 시작", font=("한컴 윤고딕 240", 10), command=lambda: start_snake_game())
+btn_restart.place(x=480, y=650)
+
+
+# --- 스네이크 게임 로직 함수들 ---
+def place_food():
+    global food
+    x = random.randint(0, (WIDTH - CELL_SIZE) // CELL_SIZE) * CELL_SIZE
+    y = random.randint(0, (HEIGHT - CELL_SIZE) // CELL_SIZE) * CELL_SIZE
+    food = (x, y)
+
+
+def draw():
+    canvas.delete("all")
+    for x, y in snake:
+        canvas.create_rectangle(x, y, x + CELL_SIZE, y + CELL_SIZE, fill="green")
+    if food:
+        canvas.create_oval(food[0], food[1], food[0] + CELL_SIZE, food[1] + CELL_SIZE, fill="red")
+
+
+def move():
+    global snake, game_running, snake_timer_id
+    if not game_running:
+        return
+
+    head_x, head_y = snake[0]
+
+    if direction == "Up":
+        head_y -= CELL_SIZE
+    elif direction == "Down":
+        head_y += CELL_SIZE
+    elif direction == "Left":
+        head_x -= CELL_SIZE
+    elif direction == "Right":
+        head_x += CELL_SIZE
+
+    new_head = (head_x, head_y)
+
+    if (head_x < 0 or head_x >= WIDTH or head_y < 0 or head_y >= HEIGHT or new_head in snake):
+        game_over()
+        return
+
+    snake.insert(0, new_head)
+
+    if new_head == food:
+        place_food()
+    else:
+        snake.pop()
+
+    draw()
+    snake_timer_id = root.after(SPEED, move)
+
+def change_direction(event):
+    global direction
+    new_dir = event.keysym
+    opposites = {"Up": "Down", "Down": "Up", "Left": "Right", "Right": "Left"}
+    if new_dir in opposites and opposites[new_dir] != direction:
+        direction = new_dir
+
+def game_over():
+    global game_running
+    game_running = False
+    canvas.create_text(WIDTH / 2, HEIGHT / 2, text="GAME OVER", fill="white", font=("Arial", 24))
+
+# 게임 초기화 및 시작 함수
+def start_snake_game():
+    global snake, direction, game_running
+    stop_snake_game()
+
+    snake = [(100, 100), (80, 100), (60, 100)]
+    direction = "Right"
+    game_running = True
+
+    place_food()
+    draw()
+    move()
+
+# 게임 정지
+def stop_snake_game():
+    global game_running, snake_timer_id
+    game_running = False
+    if snake_timer_id:
+        root.after_cancel(snake_timer_id)  # 예약된 move 함수 취소
+        snake_timer_id = None
+
+root.bind("<KeyPress>", change_direction)
+
+# --- snake 게임 구현(5)---
+btn_back = tk.Button(page5, text="돌아가기",font=("한컴 윤고딕 240", 10), command=lambda: show_frame(page4))
+btn_back.place(x=570, y=650)
+
+# --- 반속 게임 구현 (6) ---
+label5=tk.Label(page6,text="<반응속도 게임>",font=("한컴 윤고딕 240", 30), bg="white")
+label5.pack(pady=10)
+btn_back = tk.Button(page6, text="돌아가기",font=("한컴 윤고딕 240", 10), command=lambda: show_frame(page4))
+btn_back.place(x=570, y=650)
+
+# 처음 시작할 화면 설정
+show_frame(page1)
+
+root.mainloop()
