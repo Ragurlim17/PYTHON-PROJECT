@@ -127,11 +127,14 @@ btn_back = tk.Button(page5, text="돌아가기", font=("한컴 윤고딕 240", 1
 btn_back.place(x=570, y=650)
 
 # ---6번 화면 구성 (고양이 선택)---
-frame_button = tk.Frame(page6)
+frame_button = tk.Frame(page6,bg="lightgrey")
 frame_button.place(x=80,y=420)
 #텍스트 라벨
 label_text=tk.Label(page6,text="")
 label_text.place(x=280,y=500)
+
+label_select=tk.Label(page6,text="당신의 고양이를 고르세요",font=("한컴 윤고딕 240", 20),bg="lightgrey")
+label_select.place(x=190,y=90)
 
 #첫 번째 검정 고양이
 img1=Image.open("검정고양이.png")
