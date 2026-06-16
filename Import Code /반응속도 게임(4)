@@ -1,0 +1,181 @@
+import random
+import time
+import tkinter as tk
+
+
+REACTION_MIN_SECONDS = 1
+REACTION_MAX_SECONDS = 10
+REACTION_CANVAS_WIDTH = 500
+REACTION_CANVAS_HEIGHT = 380
+REACTION_TARGET_RADIUS = 25
+REACTION_REWARD_SCORE_STEP = 5
+REACTION_REWARD_EXP = 3
+
+reaction_state = {
+    "running": False,
+    "timer_id": None,
+    "target_id": None,
+    "start_time": 0,
+    "score": 0,
+    "fail_timer": None,
+}
+
+root = None
+page = None
+reaction_status = None
+reaction_score_label = None
+reaction_canvas = None
+reward_callback = None
+
+
+def setup_reaction_game(parent_page, back_command, on_reward):
+    global root, page, reaction_status, reaction_score_label, reaction_canvas, reward_callback
+    root = parent_page.winfo_toplevel()
+    page = parent_page
+    reward_callback = on_reward
+
+    label_title = tk.Label(page, text="반응속도 게임", font=("Arial", 32, "bold"), bg="lightgrey")
+    label_title.pack(pady=20)
+
+    reaction_status = tk.Label(
+        page,
+        text="시작 버튼을 누르면 목표물이 랜덤하게 나타납니다.",
+        font=("Arial", 14),
+        bg="lightgrey",
+    )
+    reaction_status.pack(pady=5)
+
+    reaction_score_label = tk.Label(page, text="점수: 0", font=("Arial", 14), bg="lightgrey")
+    reaction_score_label.pack(pady=5)
+
+    reaction_canvas = tk.Canvas(page, width=REACTION_CANVAS_WIDTH, height=REACTION_CANVAS_HEIGHT, bg="black")
+    reaction_canvas.pack(pady=15)
+    reaction_canvas.tag_bind("target", "<Button-1>", hit_reaction_target)
+
+    btn_start = tk.Button(page, text="게임 시작", font=("Arial", 15), command=start_reaction_game)
+    btn_start.place(x=260, y=610)
+
+    btn_back = tk.Button(page, text="돌아가기", font=("Arial", 12), command=back_command)
+    btn_back.place(x=580, y=650)
+
+
+def connect_reaction_game(root_window, status_label, score_label, canvas, on_reward):
+    global root, reaction_status, reaction_score_label, reaction_canvas, reward_callback
+    root = root_window
+    reaction_status = status_label
+    reaction_score_label = score_label
+    reaction_canvas = canvas
+    reward_callback = on_reward
+    reaction_canvas.tag_bind("target", "<Button-1>", hit_reaction_target)
+
+
+def ready_reaction_game():
+    stop_reaction_game()
+    reaction_canvas.delete("all")
+    reaction_status.config(text="시작 버튼을 누르면 목표물이 랜덤하게 나타납니다.")
+
+
+def start_reaction_game():
+    stop_reaction_game()
+    reaction_state["running"] = True
+    reaction_state["score"] = 0
+    reaction_score_label.config(text="점수: 0")
+    reaction_status.config(text="목표물을 기다리는 중...")
+    schedule_reaction_target()
+
+
+def stop_reaction_game():
+    if root is not None and reaction_state["timer_id"] is not None:
+        root.after_cancel(reaction_state["timer_id"])
+        reaction_state["timer_id"] = None
+
+    if root is not None and reaction_state["fail_timer"] is not None:
+        root.after_cancel(reaction_state["fail_timer"])
+        reaction_state["fail_timer"] = None
+
+    reaction_state["running"] = False
+    reaction_state["target_id"] = None
+
+
+def schedule_reaction_target():
+    reaction_canvas.delete("target")
+    delay_seconds = random.uniform(REACTION_MIN_SECONDS, REACTION_MAX_SECONDS)
+    delay_ms = int(delay_seconds * 1000)
+    reaction_state["timer_id"] = root.after(delay_ms, create_reaction_target)
+
+
+def create_reaction_target():
+    if not reaction_state["running"]:
+        return
+
+    reaction_state["timer_id"] = None
+    reaction_canvas.delete("target")
+
+    radius = REACTION_TARGET_RADIUS
+
+    x = random.randint(radius, REACTION_CANVAS_WIDTH - radius)
+    y = random.randint(radius, REACTION_CANVAS_HEIGHT - radius)
+
+    target_id = reaction_canvas.create_oval(
+        x - radius,
+        y - radius,
+        x + radius,
+        y + radius,
+        fill="tomato",
+        outline="white",
+        width=3,
+        tags="target",
+    )
+
+    reaction_canvas.create_text(
+        x,
+        y,
+        text="CLICK",
+        fill="white",
+        font=("Arial", 9, "bold"),
+        tags="target",
+    )
+
+    reaction_state["target_id"] = target_id
+    reaction_state["start_time"] = time.perf_counter()
+
+    reaction_status.config(text="목표물을 클릭하세요!")
+
+    # 4초 후 자동 실패
+    reaction_state["fail_timer"] = root.after(10000, miss_target)
+
+def miss_target():
+    if not reaction_state["running"]:
+        return
+
+    if reaction_state["target_id"] is not None:
+        reaction_canvas.delete("target")
+        reaction_state["target_id"] = None
+
+        reaction_status.config(text="시간 초과!")
+
+        schedule_reaction_target()
+
+def hit_reaction_target(event):
+    if not reaction_state["running"] or reaction_state["target_id"] is None:
+        return
+
+    if reaction_state["fail_timer"] is not None:
+        root.after_cancel(reaction_state["fail_timer"])
+        reaction_state["fail_timer"] = None
+
+    elapsed_ms = int((time.perf_counter() - reaction_state["start_time"]) * 1000)
+
+    reaction_state["score"] += 1
+    score = reaction_state["score"]
+
+    reaction_score_label.config(text=f"점수: {score}")
+    reaction_status.config(text=f"반응속도: {elapsed_ms}ms")
+
+    if score % REACTION_REWARD_SCORE_STEP == 0 and reward_callback is not None:
+        reward_callback(REACTION_REWARD_EXP)
+
+    reaction_state["target_id"] = None
+    reaction_canvas.delete("target")
+
+    schedule_reaction_target()
