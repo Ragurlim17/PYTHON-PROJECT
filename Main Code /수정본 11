@@ -1,0 +1,453 @@
+import tkinter as tk
+from tkinter import messagebox
+from PIL import Image, ImageEnhance, ImageTk
+
+import test2
+import test3
+
+
+FONT = "맑은 고딕"
+WINDOW_SIZE = "700x700"
+FEED_HEALTH_GAIN = 25
+
+PASTEL_BG = "#fff7df"
+PANEL_BG = "#fffdf8"
+PINK = "#ffe3ec"
+PINK_DARK = "#ff9fbc"
+MINT = "#d7f0dc"
+SKY = "#c9eff4"
+LAVENDER = "#e6dcff"
+TEXT = "#70565f"
+
+
+root = tk.Tk()
+root.title("고양이 키우기 게임")
+root.geometry(WINDOW_SIZE)
+root.resizable(False, False)
+
+container = tk.Frame(root, width=700, height=700)
+container.pack(fill="both", expand=True)
+
+page1 = tk.Frame(container, bg=PASTEL_BG)
+page2 = tk.Frame(container, bg="#f8f4ff")
+page3 = tk.Frame(container, bg=PASTEL_BG)
+page4 = tk.Frame(container, bg="#f0fbff")
+page5 = tk.Frame(container, bg="#eaf8f0")
+page6 = tk.Frame(container, bg="#fff0f5")
+page7 = tk.Frame(container, bg="#f8f4ff")
+
+for frame in (page1, page2, page3, page4, page5, page6, page7):
+    frame.place(x=0, y=0, relwidth=1, relheight=1)
+
+
+current_exp = 0
+max_exp = 100
+current_level = 1
+bar_max_width = 220
+reward = False
+health = 100
+selected_cat_id = 1
+
+cat_images = {}
+cat_evolved_images = {}
+
+current_food = test2.game_state.get("food_count", 0)
+is_running = test2.game_state.get("running", False)
+
+def show_frame(frame):
+    frame.tkraise()
+    # 최고 레벨인 5레벨에 도달했을 때만 게임 클리어가 뜨도록 안전하게 제어합니다.
+    if frame == page3 and current_level >= 5:
+        root.after(2000, show_game_clear)
+
+def show_game_clear():
+    width = root.winfo_width()
+    height = root.winfo_height()
+
+    overlay = tk.Canvas(page3, width=width, height=height, highlightthickness=0)
+    overlay.place(x=0, y=0)
+    overlay.create_rectangle(0, 0, width, height, fill="gray", stipple="gray50")
+    overlay.create_text(width//2, height//2, text="게임 클리어!", font=("맑은 고딕", 30, "bold"), fill="white")
+
+def make_button(parent, text, command, bg, fg=TEXT, width=160, height=48):
+    return tk.Button(
+        parent,
+        text=text,
+        font=(FONT, 14, "bold"),
+        bg=bg,
+        fg=fg,
+        activebackground=bg,
+        relief="flat",
+        cursor="hand2",
+        command=command,
+        width=0,
+        height=0,
+    )
+
+
+def load_cat_images():
+    global cat_images, cat_evolved_images
+
+    sources = {
+        1: "아기 검정 고양이.png",
+        2: "아기 치즈 고양이.png",
+        3: "아기 흰 고양이.png",
+        4: "중간 검정 고양이.png",
+        5: "중간 치즈 고양이.png",
+        6: "중간 흰 고양이.png",
+        7: "큰 검정 고양이.png",
+        8: "큰 치즈 고양이.png",
+        9: "큰 흰 고양이.png"
+    }
+
+    try:
+        for cat_id, path in sources.items():
+            base = Image.open(path).convert("RGBA")
+            select_img = base.resize((150, 150))
+            normal_img = base.resize((210, 210))
+
+            evolved = ImageEnhance.Color(normal_img).enhance(1.35)
+            evolved = ImageEnhance.Brightness(evolved).enhance(1.12)
+
+            cat_images[(cat_id, "select")] = ImageTk.PhotoImage(select_img)
+            cat_images[(cat_id, "normal")] = ImageTk.PhotoImage(normal_img)
+            cat_evolved_images[cat_id] = ImageTk.PhotoImage(evolved)
+    except FileNotFoundError as error:
+        messagebox.showerror("이미지 오류", f"필요한 이미지 파일이 없습니다.\n{error.filename}")
+        root.destroy()
+
+
+def selected_cat_image():
+    if current_level < 3:
+        return cat_evolved_images[selected_cat_id]
+    elif current_level < 5:
+        return cat_evolved_images[selected_cat_id+3]
+    else:
+        return cat_evolved_images[selected_cat_id+6]
+
+
+def update_cat_image():
+    cat_char.config(image=selected_cat_image())
+    if current_level < 3: 
+        evolution_label.config(text=f"Lv.3 진화까지 {3 - current_level}레벨")
+    elif 3 <= current_level <= 5:
+        evolution_label.config(text=f"Lv.5 진화까지 {5 - current_level}레벨")
+        if current_level == 3 or current_level == 5:
+            feed_status_label.config(text="고양이가 컸습니다")
+
+
+def update_exp_display():
+    label_level.config(text=f"레벨 {current_level}  |  경험치 {current_exp}/{max_exp}")
+    exp_ratio = min(current_exp / max_exp, 1)
+    canvas_game.coords(level_bar, 0, 0, exp_ratio * bar_max_width, 18)
+
+
+def update_health_display():
+    label_health.config(text=f"체력 {health}/100")
+    health_canvas.coords(health_bar, 0, 0, health * 2.2, 18)
+
+# 📌 실시간 점수 반영 및 15개 보상 즉시 처리를 담은 핵심 콜백 함수
+def update_food_label(score):
+    global current_food, reward
+    current_food = score
+    
+    # UI에 텍스트를 반영하고 엔진에 즉시 새로 그리도록 강제 명령합니다.
+    food_label.config(text=f"현재 먹은 음식 개수 : {current_food}")
+    root.update_idletasks()
+    
+    # 15개 도달 시 보상 지급 후 게임 강제 종료
+    if current_food >= 15 and not reward:
+        reward = True
+        give_reward(page5, 30, -40)
+        test2.stop_snake_game()
+    
+    
+def start_game():
+    user_name = name_entry.get().strip() or "나의 고양이"
+    char_name_label.config(text=user_name)
+    update_cat_image()
+    show_frame(page3)
+
+    welcome_label.place(x=185, y=150, width=330, height=42)
+    welcome_label.config(text="집사가 된 걸 축하합니다!")
+    root.after(2500, welcome_label.place_forget)
+
+
+def select_cat(cat_id):
+    global selected_cat_id
+    selected_cat_id = cat_id
+    label_text.config(text=f"{cat_id}번 고양이를 선택했습니다.")
+    update_cat_image()
+    root.after(900, lambda: show_frame(page2))
+
+
+def gain_experience(page, exp):
+    global current_exp, current_level, max_exp
+    
+    current_exp += exp
+    leveled_up = False
+
+    while current_exp >= max_exp:
+        current_exp -= max_exp
+        current_level += 1
+        max_exp += 100
+        leveled_up = True
+
+    if leveled_up:
+        feed_status_label.config(text="레벨이 올랐습니다.")
+        if page == page3 and current_level >= 5:
+            root.after(2000, show_game_clear)
+
+    update_exp_display()
+    update_cat_image()
+
+
+def change_health(amount):
+    global health
+    health = max(0, min(100, health + amount))
+    update_health_display()
+
+
+def feed_cat():
+    if health >= 100:
+        feed_status_label.config(text="이미 체력이 가득합니다.")
+    else:
+        change_health(FEED_HEALTH_GAIN)
+        feed_status_label.config(text=f"밥을 먹고 체력이 올랐습니다! (+{FEED_HEALTH_GAIN})")
+
+    mood_label.config(text="기분  든든함  |  간식  만족")
+    root.after(1800, lambda: feed_status_label.config(text=""))
+
+
+def give_reward(page, exp, damage):
+    global health
+    
+    if health >= 100 and damage > 0:
+        feed_status_label.config(text="이미 체력이 가득합니다.")
+    elif health == 0 and damage < 0:
+        feed_status_label.config(text="체력이 0입니다.")
+    else:
+        gain_experience(page, exp)
+        change_health(damage)
+        
+        if page3 == page:
+            feed_status_label.config(text=f"놀고 경험치를 획득했습니다! (+{exp})")
+        elif page == page5:
+            snake_label.config(text=f'미니 게임 후에 경험치를 획득했습니다! (+{exp})')
+
+
+def go_to_snake_game():
+    global reward
+    reward = False
+    snake_label.config(text="")
+    show_frame(page5)
+    test2.ready_game(page5)
+
+
+def start_actual_snake():
+    global reward, current_food
+    reward = False 
+    current_food = 0
+    
+    snake_label.config(text="")
+    
+    # 1. 먼저 뱀 게임용 캔버스를 생성합니다. (test2 내부에서 canvas를 생성함)
+    test2.start_snake_game(page5, update_food_label)
+    
+    # 2. ⭐ 캔버스가 배치된 직후, 그 위에 food_label이 올라오도록 다시 배치(또는 맨 위로 올림)합니다.
+    food_label.config(text="현재 먹은 음식 개수 : 0")
+    food_label.place(x=150, y=530, width=400, height=40)
+    food_label.tkraise() # 📌 이 명령어가 라벨을 캔버스보다 맨 앞으로 끌어올려 줍니다!
+    
+    # 3. 마찬가지로 snake_label도 가려지지 않게 맨 위로 올립니다.
+    snake_label.place(x=150, y=500, width=400, height=30)
+    snake_label.tkraise()
+    
+    root.update_idletasks()
+    
+    # 백그라운드 모니터링 루프 시작
+    snake_reward_monitor()
+
+
+def snake_reward_monitor():
+    global reward, current_food
+    
+    # 이미 15개를 채워 보상이 나갔다면 루프를 불필요하게 돌리지 않고 탈출합니다.
+    if reward:
+        return
+        
+    # test2의 실시간 구동 상태만 모니터링하며 루프를 안전하게 동기화합니다.
+    if test2.game_state.get("running", False):
+        root.after(100, snake_reward_monitor)
+
+def go_to_reaction_game():
+    test3.ready_reaction_game()
+    show_frame(page7)
+
+
+def go_back_to_menu():
+    test2.stop_snake_game()
+    test3.stop_reaction_game()
+    show_frame(page4)
+
+
+def reaction_reward(exp):
+    exp=30
+    give_reward(page7, exp, -30)
+    reaction_status_label.config(text=f"5점 달성! (+{exp})")
+    root.after(30000,lambda:reaction_status_label.config(text=""))
+
+
+load_cat_images()
+
+# page1: 시작 화면
+tk.Label(page1, text="고양이 키우기", font=(FONT, 30, "bold"), bg=PASTEL_BG, fg=TEXT).place(
+    x=0, y=155, width=700, height=52
+)
+tk.Label(
+    page1,
+    text="밥을 주고 미니게임을 하며 고양이를 성장시켜 보세요.",
+    font=(FONT, 14),
+    bg=PASTEL_BG,
+    fg="#9b7a66",
+).place(x=0, y=220, width=700, height=32)
+btn_start = make_button(page1, "시작하기", lambda: show_frame(page6), SKY, "#4c6870")
+btn_start.place(x=260, y=330, width=180, height=54)
+
+# page2: 이름 입력 화면
+tk.Label(page2, text="고양이 이름을 정해주세요", font=(FONT, 24, "bold"), bg="#f8f4ff", fg=TEXT).place(
+    x=0, y=170, width=700, height=46
+)
+name_entry = tk.Entry(page2, font=(FONT, 18), justify="center", bg=PANEL_BG, fg=TEXT, relief="flat")
+name_entry.place(x=200, y=260, width=300, height=46)
+btn_enter = make_button(page2, "결정", start_game, PINK)
+btn_enter.place(x=260, y=345, width=180, height=52)
+
+# page3: 메인 육성 화면
+page3_bg = tk.Canvas(page3, width=700, height=700, bg=PASTEL_BG, highlightthickness=0)
+page3_bg.place(x=0, y=0)
+page3_bg.create_rectangle(0, 530, 700, 700, fill=MINT, outline="")
+page3_bg.create_rectangle(45, 28, 655, 132, fill=PANEL_BG, outline="#f2c9d6", width=2)
+page3_bg.create_rectangle(45, 28, 655, 60, fill=PINK, outline="")
+page3_bg.create_text(350, 44, text="오늘의 고양이 다이어리", fill="#7b5b6a", font=(FONT, 15, "bold"))
+page3_bg.create_rectangle(110, 165, 590, 570, fill="#ffffff", outline="#efd1dc", width=2)
+page3_bg.create_rectangle(110, 165, 590, 215, fill="#ffe7ef", outline="")
+page3_bg.create_text(350, 190, text="우리집 고양이", fill="#8b6574", font=(FONT, 20, "bold"))
+page3_bg.create_oval(175, 455, 525, 548, fill="#f7dfc8", outline="")
+page3_bg.create_oval(220, 440, 480, 535, fill="#fbead9", outline="")
+
+label_level = tk.Label(page3, font=(FONT, 12, "bold"), bg=PANEL_BG, fg=TEXT)
+label_level.place(x=70, y=73, width=250, height=24)
+canvas_game = tk.Canvas(page3, width=bar_max_width, height=18, bg="#f7edf2", highlightthickness=0)
+canvas_game.place(x=70, y=102)
+canvas_game.create_rectangle(0, 0, bar_max_width, 18, fill="#f7edf2", outline="#e9b9c9")
+level_bar = canvas_game.create_rectangle(0, 0, 0, 18, fill=PINK_DARK, outline="")
+
+label_health = tk.Label(page3, font=(FONT, 12, "bold"), bg=PANEL_BG, fg=TEXT)
+label_health.place(x=410, y=73, width=220, height=24)
+health_canvas = tk.Canvas(page3, width=220, height=18, bg="#eef8ef", highlightthickness=0)
+health_canvas.place(x=410, y=102)
+health_canvas.create_rectangle(0, 0, 220, 18, fill="#eef8ef", outline="#95d9a6")
+health_bar = health_canvas.create_rectangle(0, 0, 220, 18, fill="#8ee6a6", outline="")
+
+welcome_label = tk.Label(page3, text="", font=(FONT, 13, "bold"), bg="#fff2a8", fg="#7a5a3a")
+char_name_label = tk.Label(page3, text="", font=(FONT, 18, "bold"), bg="#ffffff", fg="#6b5360")
+char_name_label.place(x=230, y=232, width=240, height=36)
+evolution_label = tk.Label(page3, text="", font=(FONT, 11, "bold"), bg="#ffffff", fg="#9a7484")
+evolution_label.place(x=225, y=270, width=250, height=24)
+cat_char = tk.Label(page3, bg="#ffffff")
+cat_char.place(x=245, y=300, width=210, height=210)
+mood_label = tk.Label(page3, text="기분  말랑말랑  |  간식  기다리는 중", font=(FONT, 12, "bold"), bg="#ffffff", fg="#9a7484")
+mood_label.place(x=185, y=520, width=330, height=30)
+
+care_tip = tk.Label(page3, text="미니게임을 하면 경험치가 오르고 체력이 줄어듭니다.", font=(FONT, 11), bg=PASTEL_BG, fg="#9b7a66")
+care_tip.place(x=70, y=600, width=560, height=24)
+feed_status_label = tk.Label(page3, text="", font=(FONT, 11, "bold"), bg=PASTEL_BG, fg=TEXT)
+feed_status_label.place(x=70, y=628, width=560, height=24)
+btn_feed = make_button(page3, "밥주기", feed_cat, PINK)
+btn_feed.place(x=205, y=650, width=130, height=42)
+btn_game = make_button(page3, "미니게임", lambda: show_frame(page4), SKY, "#4c6870")
+btn_game.place(x=500, y=650, width=130, height=42)
+
+play_button = tk.Button(page3, text="놀아주기", font=("맑은 고딕", 15), command=lambda: give_reward(page3, 25, -30))
+play_button.place(x=355, y=650, width=130, height=42)
+
+# page4: 미니게임 메뉴
+tk.Label(page4, text="미니게임 선택", font=(FONT, 25, "bold"), bg="#f0fbff", fg=TEXT).place(
+    x=0, y=135, width=700, height=48
+)
+tk.Label(page4, text="게임 보상으로 경험치를 얻고 체력이 조금 줄어듭니다.", font=(FONT, 13), bg="#f0fbff", fg="#7b7b7b").place(
+    x=0, y=195, width=700, height=28
+)
+btn_snake_menu = make_button(page4, "스네이크 게임", go_to_snake_game, MINT, "#4f6f5a")
+btn_snake_menu.place(x=235, y=270, width=230, height=54)
+btn_reaction_menu = make_button(page4, "반응속도 게임", go_to_reaction_game, LAVENDER, "#62577b")
+btn_reaction_menu.place(x=235, y=345, width=230, height=54)
+btn_menu_back = make_button(page4, "돌아가기", lambda: show_frame(page3), PINK)
+btn_menu_back.place(x=235, y=420, width=230, height=54)
+
+# page5: 스네이크 게임
+btn_snake_start = make_button(page5, "시작", start_actual_snake, MINT, "#4f6f5a")
+btn_snake_start.place(x=205, y=610, width=130, height=45)
+btn_snake_back = make_button(page5, "게임 메뉴", go_back_to_menu, PINK)
+btn_snake_back.place(x=365, y=610, width=130, height=45)
+
+snake_label = tk.Label(page5, text="", font=(FONT, 12, "bold"), bg="#eaf8f0", fg=TEXT)
+snake_label.place(x=150, y=520, width=400, height=30)
+
+
+food_label = tk.Label(page5, text="현재 먹은 음식 개수 : 0", font=(FONT, 14, "bold"), bg="#eaf8f0", fg=TEXT)
+
+
+# page6: 고양이 선택
+tk.Label(page6, text="고양이를 선택하세요", font=(FONT, 24, "bold"), bg="#fff0f5", fg=TEXT).place(
+    x=0, y=95, width=700, height=46
+)
+cat_select_frame = tk.Frame(page6, bg="#fff0f5")
+cat_select_frame.place(x=80, y=210, width=540, height=190)
+for index, cat_id in enumerate((1, 2, 3)):
+    btn = tk.Button(
+        cat_select_frame,
+        image=cat_images[(cat_id, "select")],
+        bg=PANEL_BG,
+        activebackground=PINK,
+        relief="flat",
+        cursor="hand2",
+        command=lambda cid=cat_id: select_cat(cid),
+    )
+    btn.grid(row=0, column=index, padx=15)
+label_text = tk.Label(page6, text="", font=(FONT, 18, "bold"), bg="#fff0f5", fg=TEXT)
+label_text.place(x=0, y=445, width=700, height=40)
+
+# page7: 반응속도 게임
+tk.Label(page7, text="반응속도 게임", font=(FONT, 22, "bold"), bg="#f8f4ff", fg=TEXT).place(
+    x=0, y=24, width=700, height=42
+)
+reaction_status_label = tk.Label(page7, text="", font=(FONT, 13), bg="#f8f4ff", fg=TEXT)
+reaction_status_label.place(x=100, y=78, width=500, height=26)
+reaction_score_label = tk.Label(page7, text="점수: 0", font=(FONT, 13, "bold"), bg="#f8f4ff", fg=TEXT)
+reaction_score_label.place(x=100, y=106, width=500, height=26)
+reaction_canvas = tk.Canvas(
+    page7,
+    width=test3.REACTION_CANVAS_WIDTH,
+    height=test3.REACTION_CANVAS_HEIGHT,
+    bg=PANEL_BG,
+    highlightthickness=2,
+    highlightbackground=LAVENDER,
+)
+reaction_canvas.place(x=100, y=145)
+reaction_canvas.tag_bind("target", "<Button-1>", test3.hit_reaction_target)
+btn_reaction_start = make_button(page7, "시작", test3.start_reaction_game, LAVENDER, "#62577b")
+btn_reaction_start.place(x=205, y=595, width=130, height=45)
+btn_reaction_back = make_button(page7, "게임 메뉴", go_back_to_menu, PINK)
+btn_reaction_back.place(x=365, y=595, width=130, height=45)
+
+test3.connect_reaction_game(root, reaction_status_label, reaction_score_label, reaction_canvas, reaction_reward)
+
+update_exp_display()
+update_health_display()
+update_cat_image()
+show_frame(page1)
+
+if __name__ == "__main__":
+    root.mainloop()
